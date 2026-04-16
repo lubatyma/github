@@ -1,435 +1,126 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>Crazy Meteo - Enhanced</title>
-    <style>
-        body {
-            margin: 0;
-            background: #000;
-            color: #fff;
-            font-family: 'Courier New', Courier, monospace;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-
-        #game-container {
-            position: relative;
-            width: 800px;
-            height: 600px;
-            border: 4px solid #444;
-        }
-
-        canvas {
-            display: block;
-            background: #050505;
-        }
-
-        .overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            background: rgba(0,0,0,0.8);
-            z-index: 10;
-            text-align: center;
-        }
-
-        h1 {
-            font-size: 50px;
-            color: #ff3333;
-            margin-bottom: 10px;
-        }
-
-        .btn {
-            padding: 12px 30px;
-            font-size: 20px;
-            background: #333;
-            color: white;
-            border: 2px solid #fff;
-            cursor: pointer;
-            margin: 5px;
-        }
-
-        .btn:hover {
-            background: #fff;
-            color: #000;
-        }
-
-        #hud {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            font-size: 24px;
-            color: #0f0;
-            z-index: 5;
-        }
-
-        .hidden {
-            display: none !important;
-        }
-
-        input {
-            padding: 10px;
-            font-size: 18px;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-
-        .help-text {
-            margin-top: 16px;
-            line-height: 1.7;
-            color: #ffd966;
-            font-size: 18px;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>쿠키런 스타일 게임</title>
+<style>
+  body { margin:0; overflow:hidden; background:#87CEEB; }
+  canvas { display:block; margin:0 auto; background:#87CEEB; }
+</style>
 </head>
 <body>
-
-<div id="game-container">
-    <div id="hud" class="hidden">TIME: 0.00s</div>
-
-    <div id="menu" class="overlay">
-        <h1>CRAZY METEO</h1>
-        <input type="text" id="player-name" placeholder="이름 입력" maxlength="10">
-        <br>
-        <button class="btn" onclick="startGame()">START GAME</button>
-        <button class="btn" onclick="showRecords()">RANKING</button>
-
-        <div class="help-text">
-            이동: 방향키 또는 숫자패드 8 / 5 / 4 / 6<br>
-            일시정지 / 재시작: SPACE
-        </div>
-    </div>
-
-    <div id="countdown" class="overlay hidden">
-        <h1 id="count-text">3</h1>
-    </div>
-
-    <div id="game-over" class="overlay hidden">
-        <h1 style="color: #ff0000;">GAME OVER</h1>
-        <p id="final-score" style="font-size: 20px;"></p>
-        <button class="btn" onclick="backToMenu()">RETRY</button>
-    </div>
-
-    <div id="record-screen" class="overlay hidden">
-        <h1>TOP 5 RECORDS</h1>
-        <div id="record-list" style="font-size: 18px; margin-bottom: 20px; line-height: 1.6;"></div>
-        <button class="btn" onclick="backToMenu()">BACK</button>
-    </div>
-
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-</div>
-
+<canvas id="game"></canvas>
 <script>
-const canvas = document.getElementById('gameCanvas');
+const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+canvas.width = 400;
+canvas.height = 300;
 
-// 리소스
-const shipImg = new Image();
-shipImg.src = 'ship.png';
-
-const bgm = new Audio('bgm.mp3');
-bgm.loop = true;
-
-let gameState = 'MENU';
-let score = 0;
-let enemies = [];
-let lastTime = 0;
-let spawnTimer = 0;
-let isPaused = false;
-let playerName = "Pilot";
-
-const player = {
-    x: 400,
-    y: 300,
-    size: 20,
-    speed: 2.5
+let player = {
+  x: 50,
+  y: 200,
+  width: 30,
+  height: 30,
+  dy: 0,
+  gravity: 0.5,
+  jumpPower: -10,
+  grounded: false
 };
 
-const keys = {};
+let obstacles = [];
+let frame = 0;
+let score = 0;
+let gameOver = false;
 
-// 별 배경용
-const stars = Array.from({ length: 100 }, () => ({
-    x: Math.random() * canvas.width,
-    y: Math.random() * canvas.height,
-    r: Math.random() * 1.5 + 0.5
-}));
-
-window.addEventListener('keydown', e => {
-    keys[e.code] = true;
-
-    if (e.code === 'Space' && gameState === 'PLAYING') {
-        e.preventDefault();
-        isPaused = !isPaused;
-    }
-});
-
-window.addEventListener('keyup', e => {
-    keys[e.code] = false;
-});
-
-function drawBackground() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // 배경
-    ctx.fillStyle = '#050505';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // 별
-    ctx.fillStyle = '#ffffff';
-    stars.forEach(star => {
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
-        ctx.fill();
-    });
+function spawnObstacle() {
+  obstacles.push({
+    x: canvas.width,
+    y: 230,
+    width: 20,
+    height: 20
+  });
 }
 
-function startGame() {
-    const nameInput = document.getElementById('player-name').value.trim();
-    if (nameInput) {
-        playerName = nameInput;
-    } else {
-        playerName = "Pilot";
+function update() {
+  if(gameOver) return;
+
+  frame++;
+  if(frame % 90 === 0) spawnObstacle();
+
+  player.dy += player.gravity;
+  player.y += player.dy;
+
+  if(player.y + player.height >= 260) {
+    player.y = 260 - player.height;
+    player.dy = 0;
+    player.grounded = true;
+  } else {
+    player.grounded = false;
+  }
+
+  obstacles.forEach((obs, i) => {
+    obs.x -= 3;
+
+    // 충돌
+    if(player.x < obs.x + obs.width &&
+       player.x + player.width > obs.x &&
+       player.y < obs.y + obs.height &&
+       player.y + player.height > obs.y) {
+      gameOver = true;
     }
 
-    document.getElementById('menu').classList.add('hidden');
-    document.getElementById('record-screen').classList.add('hidden');
-    document.getElementById('game-over').classList.add('hidden');
-    document.getElementById('countdown').classList.remove('hidden');
-
-    bgm.currentTime = 0;
-    bgm.play().catch(() => {
-        console.log("Audio play blocked by browser");
-    });
-
-    let count = 3;
-    const countText = document.getElementById('count-text');
-    countText.innerText = count;
-
-    const timer = setInterval(() => {
-        count--;
-
-        if (count > 0) {
-            countText.innerText = count;
-        } else if (count === 0) {
-            countText.innerText = "START!";
-        } else {
-            clearInterval(timer);
-            initGame();
-        }
-    }, 800);
-}
-
-function initGame() {
-    gameState = 'PLAYING';
-    score = 0;
-    enemies = [];
-    spawnTimer = 0;
-    isPaused = false;
-
-    player.x = canvas.width / 2;
-    player.y = canvas.height / 2;
-
-    document.getElementById('countdown').classList.add('hidden');
-    document.getElementById('hud').classList.remove('hidden');
-    document.getElementById('hud').innerText = 'TIME: 0.00s';
-
-    lastTime = performance.now();
-
-    // 시작하자마자 운석 1개 생성
-    spawnEnemy();
-
-    requestAnimationFrame(gameLoop);
-}
-
-function spawnEnemy() {
-    const side = Math.floor(Math.random() * 4);
-    let x, y, vx, vy;
-    const speed = 1 + (score / 20);
-
-    if (side === 0) { // 위
-        x = Math.random() * canvas.width;
-        y = -20;
-        vx = (Math.random() - 0.5) * 2;
-        vy = speed;
-    } else if (side === 1) { // 오른쪽
-        x = canvas.width + 20;
-        y = Math.random() * canvas.height;
-        vx = -speed;
-        vy = (Math.random() - 0.5) * 2;
-    } else if (side === 2) { // 아래
-        x = Math.random() * canvas.width;
-        y = canvas.height + 20;
-        vx = (Math.random() - 0.5) * 2;
-        vy = -speed;
-    } else { // 왼쪽
-        x = -20;
-        y = Math.random() * canvas.height;
-        vx = speed;
-        vy = (Math.random() - 0.5) * 2;
+    if(obs.x + obs.width < 0) {
+      obstacles.splice(i,1);
+      score++;
     }
-
-    enemies.push({
-        x,
-        y,
-        vx,
-        vy,
-        size: 8
-    });
-}
-
-function update(dt) {
-    if (isPaused) return;
-
-    // 이동
-    if (keys['ArrowUp'] || keys['Numpad8']) player.y -= player.speed;
-    if (keys['ArrowDown'] || keys['Numpad5']) player.y += player.speed;
-    if (keys['ArrowLeft'] || keys['Numpad4']) player.x -= player.speed;
-    if (keys['ArrowRight'] || keys['Numpad6']) player.x += player.speed;
-
-    player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
-    player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
-
-    // 시간
-    score += dt / 1000;
-    document.getElementById('hud').innerText = `TIME: ${score.toFixed(2)}s`;
-
-    // 운석 생성 간격
-    spawnTimer += dt;
-    const spawnDelay = Math.max(100, 500 - (score * 5));
-
-    if (spawnTimer > spawnDelay) {
-        spawnEnemy();
-        spawnTimer = 0;
-    }
-
-    // 운석 이동 및 충돌
-    enemies.forEach(e => {
-        e.x += e.vx;
-        e.y += e.vy;
-
-        if (e.x < 0 || e.x > canvas.width) e.vx *= -1;
-        if (e.y < 0 || e.y > canvas.height) e.vy *= -1;
-
-        const dist = Math.hypot(player.x - e.x, player.y - e.y);
-        if (dist < player.size + e.size) {
-            gameOver();
-        }
-    });
-}
-
-function drawPlayer() {
-    if (shipImg.complete && shipImg.naturalWidth > 0) {
-        ctx.drawImage(
-            shipImg,
-            player.x - player.size,
-            player.y - player.size,
-            player.size * 2,
-            player.size * 2
-        );
-    } else {
-        // 이미지 없을 때 대체 표시
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.moveTo(player.x, player.y - player.size);
-        ctx.lineTo(player.x - player.size, player.y + player.size);
-        ctx.lineTo(player.x + player.size, player.y + player.size);
-        ctx.closePath();
-        ctx.fill();
-    }
-}
-
-function drawEnemies() {
-    ctx.fillStyle = '#ff4444';
-    enemies.forEach(e => {
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
-        ctx.fill();
-    });
-}
-
-function drawPauseOverlay() {
-    if (!isPaused) return;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = '#ffff00';
-    ctx.font = 'bold 48px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2 - 10);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '24px Arial';
-    ctx.fillText('SPACE 키로 다시 시작', canvas.width / 2, canvas.height / 2 + 35);
+  });
 }
 
 function draw() {
-    drawBackground();
-    drawPlayer();
-    drawEnemies();
-    drawPauseOverlay();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // 바닥
+  ctx.fillStyle = '#654321';
+  ctx.fillRect(0,260,canvas.width,40);
+
+  // 플레이어
+  ctx.fillStyle = 'orange';
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+
+  // 장애물
+  ctx.fillStyle = 'red';
+  obstacles.forEach(obs => {
+    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+  });
+
+  // 점수
+  ctx.fillStyle = 'black';
+  ctx.font = '16px Arial';
+  ctx.fillText('Score: ' + score, 10, 20);
+
+  if(gameOver) {
+    ctx.fillText('GAME OVER - 새로고침!', 100, 150);
+  }
 }
 
-function gameLoop(time) {
-    if (gameState !== 'PLAYING') return;
-
-    const dt = time - lastTime;
-    lastTime = time;
-
-    update(dt);
-    draw();
-
-    requestAnimationFrame(gameLoop);
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
 }
 
-function gameOver() {
-    if (gameState !== 'PLAYING') return;
+// 점프
+window.addEventListener('keydown', e => {
+  if(e.code === 'Space' && player.grounded) {
+    player.dy = player.jumpPower;
+  }
+});
 
-    gameState = 'FINISHED';
-    bgm.pause();
+canvas.addEventListener('click', () => {
+  if(player.grounded) player.dy = player.jumpPower;
+});
 
-    document.getElementById('game-over').classList.remove('hidden');
-    document.getElementById('final-score').innerText = `${playerName}: ${score.toFixed(2)}s`;
-
-    let records = JSON.parse(localStorage.getItem('cm_ranks') || '[]');
-    records.push({
-        name: playerName,
-        time: parseFloat(score.toFixed(2))
-    });
-
-    records.sort((a, b) => b.time - a.time);
-    localStorage.setItem('cm_ranks', JSON.stringify(records.slice(0, 5)));
-}
-
-function showRecords() {
-    document.getElementById('menu').classList.add('hidden');
-    document.getElementById('record-screen').classList.remove('hidden');
-
-    const records = JSON.parse(localStorage.getItem('cm_ranks') || '[]');
-
-    document.getElementById('record-list').innerHTML =
-        records.map((r, i) =>
-            `<div>#${i + 1} [${r.name}] - ${r.time}s</div>`
-        ).join('') || "No Data";
-}
-
-function backToMenu() {
-    location.reload();
-}
-
-// 첫 화면 배경만 한 번 그리기
-draw();
+loop();
 </script>
-
 </body>
 </html>
